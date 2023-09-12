@@ -4,6 +4,8 @@ import android.content.Context;
 import android.util.Log;
 
 import com.nexgo.oaf.apiv3.emv.EmvHandler2;
+import com.oel.olipaysdk.client.QpAmbiente;
+import com.oel.olipaysdk.client.QpayClient;
 import com.oel.olipaysdk.client.QpayClientConnectionException;
 import com.oel.olipaysdk.client.QpayClientConnectionLostException;
 import com.oel.olipaysdk.client.QpayClientGeneralException;
@@ -28,22 +30,31 @@ import io.sentry.event.interfaces.StackTraceInterface;
 
 public class QpayController {
     private Context context;
+    private final QpayClient qpayClient;
     protected static SentryClient sentry;
     private QpParamsMemory paramsMemory;
     private boolean debugModeEnabled;
     private QpProcess qpProcess;
     private QpLocale qpLocale;
+    private String emvTagsMemory;
+    private Map<String, Object> requestMemory;
+    private Map<String, Object> responseMemory;
+    private boolean needFallbackMemory;
+    private boolean approvedPleaseSignMemory;
+    private Exception exceptionMemory;
     private boolean removeCardHint = false;
     private boolean cancelRealizaTransaccion = false;
     private LoggedQpayControlEventosImpl qpListener;
     private final EmvNfcKernelApi emvApi;
     private EmvHandler2 emvHandler2;
-    private QpayController(){
+    private QpayController(Context context, QpayControlEventos qpListener, QpAmbiente qpAmbiente, QpLocale qpLocale, boolean qpsEnabled, boolean debugModeEnabled, String qpUrl) {
         this.emvApi = EmvNfcKernelApi.getInstance();
+        this.qpayClient = new QpayClient(qpAmbiente, qpUrl, debugModeEnabled);
     }
 
     public String qpRealizaTransaccion(final Context context, final String identificador, final String contrasena, final double monto, final double propina, final String referencia, final int diferimiento, final int plan, final int numeroPagos) throws TransactionOngoingException {
 
+        clearState();
         this.context = context;
         final String deviceId = AndroidUtils.getSerialNumber();
         final String transaccionId = TransactionId.generate();
@@ -75,6 +86,21 @@ public class QpayController {
         }).start();
 
         return transaccionId;
+    }
+
+    private void clearState() {
+        emvApi.updateTerminalParamters(ContantPara.CardSlot.ICC, "9F330360B8C8");
+        paramsMemory = null;
+        emvTagsMemory = null;
+        requestMemory = null;
+        responseMemory = null;
+        needFallbackMemory = false;
+//        readCardFailureCountMemory = 0; // needed for amex certification
+        approvedPleaseSignMemory = false;
+        exceptionMemory = null;
+        cancelRealizaTransaccion = false;
+        removeCardHint = false;
+        // hideEmvRemoveCardHintFix = false; // Used to hide ContantPara.NfcTipMessageID.PLS_REMOVE_CARD in case nfc over max limit is used and emv sdk shows it in wrong order
     }
 
     private void checkCard() {
